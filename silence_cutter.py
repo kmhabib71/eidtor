@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QV
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QRectF
 from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QBrush, QPainterPath, QImage, QPixmap
 import cv2
+from proglog import ProgressBarLogger
 
 class SilenceDetectionThread(QThread):
     progress_updated = pyqtSignal(int)
@@ -64,15 +65,24 @@ class SilenceDetectionThread(QThread):
             print(f"\n---------- SILENCE DETECTION START ----------")
             print(f"Detecting silence with threshold: {self.silence_threshold} dB, min duration: {self.min_silence_duration} ms")
             
+            # Start with initial progress
+            self.progress_updated.emit(5)
+            QApplication.processEvents()  # Process events to update GUI
+            
             # Modify moviepy's FFMPEG_BINARY setting to use our detected FFmpeg path
             from moviepy.config import change_settings
             change_settings({"FFMPEG_BINARY": self.ffmpeg_path})
             
             # Extract audio from video
             print(f"Loading video from: {self.video_path}")
+            self.progress_updated.emit(10)
+            QApplication.processEvents()
+            
             video = mp.VideoFileClip(self.video_path)
             audio_duration_ms = int(video.audio.duration * 1000)
             print(f"Video loaded, audio duration: {audio_duration_ms} ms")
+            self.progress_updated.emit(20)
+            QApplication.processEvents()
             
             # Create temporary audio file with unique name to avoid conflicts
             temp_audio = tempfile.NamedTemporaryFile(suffix=f'_sid_{os.getpid()}_{int(time.time())}.wav', delete=False)
@@ -80,13 +90,19 @@ class SilenceDetectionThread(QThread):
             temp_audio.close()
             print(f"Extracting audio to: {temp_audio_path}")
             
+            self.progress_updated.emit(30)
+            QApplication.processEvents()
             video.audio.write_audiofile(temp_audio_path, verbose=False, logger=None)
             print(f"Audio extracted successfully")
+            self.progress_updated.emit(50)
+            QApplication.processEvents()
             
             # Load audio and detect non-silent parts
             print(f"Loading audio for silence detection")
             audio = AudioSegment.from_file(temp_audio_path)
             print(f"Audio loaded: duration={len(audio)}ms, channels={audio.channels}, sample_width={audio.sample_width}, frame_rate={audio.frame_rate}")
+            self.progress_updated.emit(60)
+            QApplication.processEvents()
             
             # Detect non-silent parts (we'll invert this to get silent parts)
             print(f"Detecting non-silent parts with silence threshold={self.silence_threshold}dB, min_silence_len={self.min_silence_duration}ms")
@@ -95,6 +111,9 @@ class SilenceDetectionThread(QThread):
                 min_silence_len=self.min_silence_duration,
                 silence_thresh=self.silence_threshold
             )
+            self.progress_updated.emit(70)
+            QApplication.processEvents()
+            
             print(f"Number of non-silent ranges detected: {len(non_silent_ranges)}")
             if non_silent_ranges:
                 for i, (start, end) in enumerate(non_silent_ranges[:5]):  # Show first 5
@@ -122,6 +141,9 @@ class SilenceDetectionThread(QThread):
                 if non_silent_ranges[-1][1] < audio_duration_ms:
                     silent_ranges.append((non_silent_ranges[-1][1], audio_duration_ms))
             
+            self.progress_updated.emit(80)
+            QApplication.processEvents()
+            
             print(f"Number of initial silent ranges: {len(silent_ranges)}")
             if silent_ranges:
                 for i, (start, end) in enumerate(silent_ranges[:5]):  # Show first 5
@@ -132,6 +154,9 @@ class SilenceDetectionThread(QThread):
             # Filter out silent ranges shorter than the minimum duration
             filtered_silent_ranges = [(start, end) for start, end in silent_ranges if end - start >= self.min_silence_duration]
             print(f"After filtering by minimum duration ({self.min_silence_duration}ms): {len(filtered_silent_ranges)} silent ranges")
+            
+            self.progress_updated.emit(90)
+            QApplication.processEvents()
             
             # Calculate duration of each silent part and create result list
             silent_parts = []
@@ -148,10 +173,6 @@ class SilenceDetectionThread(QThread):
                     'duration_ms': duration_ms,
                     'selected': True  # Default to cutting this silence
                 })
-                
-                # Update progress
-                progress = int((i + 1) / len(filtered_silent_ranges) * 100)
-                self.progress_updated.emit(progress)
             
             # Clean up temp file
             try:
@@ -159,6 +180,10 @@ class SilenceDetectionThread(QThread):
             except:
                 pass
                 
+            # Final progress update
+            self.progress_updated.emit(100)
+            QApplication.processEvents()
+            
             # Emit results
             print(f"Final silent parts count: {len(silent_parts)}")
             print(f"---------- SILENCE DETECTION END ----------\n")
@@ -217,8 +242,14 @@ class ProcessingThread(QThread):
             from moviepy.config import change_settings
             change_settings({"FFMPEG_BINARY": self.ffmpeg_path})
             
+            # Initial progress
+            self.progress_updated.emit(5)
+            QApplication.processEvents()
+            
             # Load the video
             video = mp.VideoFileClip(self.video_path)
+            self.progress_updated.emit(10)
+            QApplication.processEvents()
             
             # Create a list of segments to keep
             segments = []
@@ -227,6 +258,9 @@ class ProcessingThread(QThread):
             # Sort silent parts by start time
             sorted_parts = sorted(self.silent_parts, key=lambda x: x['start'])
             
+            self.progress_updated.emit(20)
+            QApplication.processEvents()
+            
             for part in sorted_parts:
                 if part['selected']:  # Only cut if selected
                     if part['start'] > last_end:
@@ -234,10 +268,13 @@ class ProcessingThread(QThread):
                         segments.append(video.subclip(last_end, part['start']))
                     # Update last_end to be the end of this silent part
                     last_end = part['end']
-                
+            
             # Add the final segment if needed
             if last_end < video.duration:
                 segments.append(video.subclip(last_end, video.duration))
+            
+            self.progress_updated.emit(30)
+            QApplication.processEvents()
             
             # If no segments were cut, just use the original video
             if not segments:
@@ -246,19 +283,76 @@ class ProcessingThread(QThread):
                 # Concatenate all segments
                 result = mp.concatenate_videoclips(segments)
             
+            self.progress_updated.emit(40)
+            QApplication.processEvents()
+            
             # Create a unique temp filename for audio to avoid conflicts
             temp_audio_file = os.path.join(tempfile.gettempdir(), f"temp-audio-processing-{os.getpid()}-{int(time.time())}.m4a")
             
-            # Export the result
-            result.write_videofile(
-                self.output_path, 
-                codec="libx264", 
-                audio_codec="aac",
-                temp_audiofile=temp_audio_file, 
-                remove_temp=True,
-                verbose=False,
-                logger=None
-            )
+            # Define a custom logger for the write_videofile operation
+            class MyProgressLogger:
+                def __init__(self, callback):
+                    self.callback = callback
+                    self.last_time = time.time()
+                    
+                def callback(self, **kwargs):
+                    # Extract t and total from kwargs if present
+                    current_time = time.time()
+                    if current_time - self.last_time >= 0.5:  # Update only every 0.5 seconds
+                        self.last_time = current_time
+                        
+                        if 't' in kwargs and 'total' in kwargs:
+                            # Progress in writing frames
+                            progress = int(50 + 45 * (kwargs['t'] / kwargs['total']))
+                            self.callback(progress)
+                            QApplication.processEvents()
+                        elif 'chunk' in kwargs and 'total' in kwargs:
+                            # Progress in writing audio
+                            progress = int(40 + 10 * (kwargs['chunk'] / kwargs['total']))
+                            self.callback(progress)
+                            QApplication.processEvents()
+            
+            # Set up progress updates through manual timed updates
+            self.last_update_time = time.time()
+            self.last_progress = 40
+            
+            def update_progress():
+                current_time = time.time()
+                if current_time - self.last_update_time >= 0.2:
+                    self.last_update_time = current_time
+                    self.last_progress += 1
+                    if self.last_progress <= 95:  # Don't go beyond 95
+                        self.progress_updated.emit(self.last_progress)
+                        QApplication.processEvents()  # Process UI events
+            
+            # Create a timer to periodically update the progress
+            timer = QTimer()
+            timer.timeout.connect(update_progress)
+            
+            try:
+                # Start the timer
+                timer.start(200)  # Check every 200ms
+                
+                # Export the result
+                result.write_videofile(
+                    self.output_path, 
+                    codec="libx264", 
+                    audio_codec="aac",
+                    temp_audiofile=temp_audio_file, 
+                    remove_temp=True,
+                    verbose=False,
+                    logger=None
+                )
+                
+                # Stop the timer
+                timer.stop()
+            except Exception as e:
+                timer.stop()
+                raise e
+            
+            # Final progress update
+            self.progress_updated.emit(100)
+            QApplication.processEvents()
             
             self.processing_complete.emit(self.output_path)
             
