@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+output/
+processed/
+
+# Audio files
+*.mp3
+*.wav
+*.aac
+*.ogg
+*.flac
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# IDE / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.history/
+*.sublime-workspace
+*.sublime-project
+.project
+.classpath
+.settings/
+
+# Logs
+logs/
+*.log
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Application specific
+debug_output/
+tmp/
+temp/
+ffmpeg_output.txt 
